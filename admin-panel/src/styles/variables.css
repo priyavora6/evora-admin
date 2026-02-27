@@ -1,0 +1,44 @@
+:root {
+  /* 💎 Core EVORA Brand Colors */
+  --primary: #1B2F5E;           /* Deep Royal Navy */
+  --primary-dark: #0F1E3D;      /* Navy Dark */
+  --primary-light: #324A7E;     /* Navy Light */
+  
+  --secondary: #C59D89;         /* Metallic Rose Gold */
+  --secondary-dark: #A67C69;    /* Rose Gold Dark */
+  --secondary-light: #E3C9BC;   /* Rose Gold Light */
+  --secondary-shimmer: #F2E6DF; /* Rose Gold Shimmer */
+  
+  /* 🤍 Backgrounds */
+  --bg: #F9F6F3;                /* Soft Warm Cream */
+  --surface: #FFFFFF;           /* Card White */
+  --surface-grey: #F2EBE5;      /* Light Rose Tint */
+  
+  /* ✍️ Text Colors */
+  --text-dark: #1B2F5E;         /* Navy for Headings */
+  --text-medium: #7D726E;       /* Warm Grey for Content */
+  --text-light: #AAB2C2;        /* Light Grey for Hints */
+  --text-secondary: #7D726E;    /* Warm Grey for Subtitles */
+  
+  /* ✅ Status Colors */
+  --success: #4CAF50;
+  --error: #D9534F;
+  --warning: #E8A838;
+  --info: #29B6F6;
+  
+  /* 🖼️ UI Component Colors */
+  --border: #E6DCD6;            /* Rose-tinted Border */
+  --divider: #F2EBE5;
+  --disabled: #E0E0E0;
+  --shadow: rgba(27, 47, 94, 0.08);  /* Navy Shadow */
+  
+  /* 📐 Dimensions */
+  --radius: 12px;
+  --radius-lg: 16px;
+  --sidebar-width: 260px;
+  
+  /* 🌟 Gradients (for inline styles) */
+  --gradient-navy: linear-gradient(135deg, #1B2F5E 0%, #0F1E3D 100%);
+  --gradient-rose: linear-gradient(135deg, #C59D89 0%, #E3C9BC 100%);
+  --gradient-royal: linear-gradient(135deg, #1B2F5E 0%, #5B3E31 100%);
+}

@@ -1,0 +1,314 @@
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: -0.5px;
+}
+
+.search-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 250px;
+  padding: 12px 18px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  font-size: 14px;
+  background: var(--surface);
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.search-input::placeholder {
+  color: var(--text-light);
+  font-weight: 400;
+}
+
+.search-input:focus {
+  border-color: var(--secondary);
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(197, 157, 137, 0.1);
+  background: var(--bg);
+}
+
+.filter-chip {
+  padding: 10px 20px;
+  border-radius: 12px;
+  border: 2px solid rgba(197, 157, 137, 0.3);
+  background: rgba(197, 157, 137, 0.08);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--secondary-dark);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+}
+
+.filter-chip:hover {
+  border-color: var(--secondary);
+  background: rgba(197, 157, 137, 0.15);
+  transform: scale(1.02);
+}
+
+.filter-chip.active {
+  background: var(--secondary);
+  color: white;
+  border-color: var(--secondary);
+  box-shadow: 0 4px 16px rgba(197, 157, 137, 0.35);
+}
+
+.data-table {
+  width: 100%;
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 2px 8px var(--shadow);
+  border: 1px solid var(--border);
+}
+
+.data-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 14px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  background: var(--surface-grey);
+  border-bottom: 1px solid var(--border);
+}
+
+.data-table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.data-table tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tr:hover td {
+  background: linear-gradient(90deg, var(--bg) 0%, var(--surface) 100%);
+  transition: all 0.2s ease;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid transparent;
+}
+
+.status-badge.active { 
+  background: #E8F5E9; 
+  color: var(--success); 
+  border-color: #C8E6C9;
+}
+
+.status-badge.inactive { 
+  background: #FFEBEE; 
+  color: var(--error); 
+  border-color: #FFCDD2;
+}
+
+.status-badge.admin { 
+  background: linear-gradient(135deg, var(--secondary-shimmer) 0%, var(--secondary-light) 100%); 
+  color: var(--secondary-dark);
+  border-color: var(--secondary-light);
+  font-weight: 700;
+}
+
+.status-badge.pending { 
+  background: #FFF3E0; 
+  color: var(--warning); 
+  border-color: #FFE0B2;
+}
+
+.status-badge.confirmed { 
+  background: #E8F5E9; 
+  color: var(--success); 
+  border-color: #C8E6C9;
+}
+
+.status-badge.declined { 
+  background: #FFEBEE; 
+  color: var(--error); 
+  border-color: #FFCDD2;
+}
+
+.status-badge.completed { 
+  background: #E8F5E9; 
+  color: var(--success); 
+  border-color: #C8E6C9;
+}
+
+.status-badge.upcoming { 
+  background: #E3F2FD; 
+  color: var(--info); 
+  border-color: #BBDEFB;
+}
+
+/* Status Badges - Event Booking Variants */
+.status-confirmed {
+  background-color: #E8F5E9;
+  color: #2E7D32;
+  border: 1px solid #C8E6C9;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.status-pending {
+  background-color: #FFF3E0;
+  color: #EF6C00;
+  border: 1px solid #FFE0B2;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.status-rejected {
+  background-color: #FFEBEE;
+  color: #C62828;
+  border: 1px solid #FFCDD2;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.status-completed {
+  background-color: #E3F2FD;
+  color: #1565C0;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+  border: 1px solid #BBDEFB;
+}
+
+.action-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+}
+
+.action-btn.view { 
+  background: var(--secondary-shimmer); 
+  color: var(--secondary-dark);
+  border: 1px solid var(--secondary-light);
+}
+
+.action-btn.view:hover {
+  background: linear-gradient(135deg, var(--secondary-light) 0%, var(--secondary) 100%);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(197, 157, 137, 0.3);
+}
+
+.action-btn.danger { 
+  background: #FFEBEE; 
+  color: var(--error);
+  border: 1px solid #FFCDD2;
+}
+
+.action-btn.danger:hover {
+  background: var(--error);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(217, 83, 79, 0.3);
+}
+
+.action-btn.success { 
+  background: #E8F5E9; 
+  color: var(--success);
+  border: 1px solid #C8E6C9;
+}
+
+.action-btn.success:hover {
+  background: var(--success);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+}
+
+.action-btn.warning { 
+  background: #FFF3E0; 
+  color: var(--warning);
+  border: 1px solid #FFE0B2;
+}
+
+.action-btn.warning:hover {
+  background: var(--warning);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(232, 168, 56, 0.3);
+}
+
+.action-btn.primary { 
+  background: var(--primary); 
+  color: white;
+  border: 1px solid var(--primary-dark);
+}
+
+.action-btn.primary:hover {
+  background: var(--primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(27, 47, 94, 0.3);
+}
+
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: white;
+}
