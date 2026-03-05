@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Your Digital Pass | EVORA</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75'>🎉</text></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { width: 100%; max-width: 420px; }
+        .ticket { background: white; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+        .ticket-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px; color: white; text-align: center; }
+        .ticket-header h1 { font-size: 24px; margin-bottom: 4px; font-weight: 800; }
+        .event-name { font-size: 16px; opacity: 0.9; font-weight: 600; margin-bottom: 8px; }
+        .event-details { font-size: 13px; opacity: 0.8; }
+        .ticket-body { padding: 24px; text-align: center; }
+        .status-badge { display: inline-block; background: #dbeafe; color: #1e40af; padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 20px; }
+        .status-badge.status-valid { background: #dcfce7; color: #166534; }
+        .status-badge.status-used { background: #fecaca; color: #991b1b; }
+        .vip-badge { display: none; background: #fef3c7; color: #b45309; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 700; margin-left: 8px; }
+        .guest-name { font-size: 22px; color: #111827; font-weight: 800; margin-bottom: 4px; }
+        .guest-phone { font-size: 13px; color: #6b7280; margin-bottom: 20px; }
+        .qr-container { background: #f3f4f6; padding: 20px; border-radius: 16px; margin-bottom: 20px; display: flex; justify-content: center; }
+        #qrcode { display: flex; justify-content: center; align-items: center; }
+        #qrcode img { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .qr-label { font-size: 12px; color: #6b7280; margin-top: 12px; }
+        .divider { height: 1px; background: #e5e7eb; margin: 20px 0; }
+        .instructions { background: #f0f9ff; padding: 16px; border-radius: 12px; border-left: 4px solid #0ea5e9; margin-bottom: 20px; text-align: left; }
+        .instructions h3 { color: #0c4a6e; font-size: 14px; margin-bottom: 8px; }
+        .instructions p { color: #0c4a6e; font-size: 13px; line-height: 1.5; }
+        .actions { display: flex; gap: 12px; margin-bottom: 0; }
+        button { flex: 1; padding: 12px; border: none; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .btn-primary:active { transform: scale(0.98); }
+        .btn-secondary { background: #e5e7eb; color: #374151; border: 1px solid #d1d5db; }
+        .btn-secondary:active { background: #d1d5db; }
+        .footer { padding: 12px; background: #f9fafb; border-top: 1px solid #e5e7eb; font-size: 12px; color: #6b7280; text-align: center; }
+        .loading { text-align: center; padding: 40px; color: white; }
+        .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #fff; border-top-color: #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        h2 { color: #111827; margin-bottom: 12px; }
+        p { color: #6b7280; font-size: 14px; }
+        #ticket-wrapper { display: none; }
+        #loading { text-align: center; padding: 40px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 16px; color: white;">Loading your pass...</p>
+        </div>
+        
+        <div id="ticket-wrapper" class="ticket">
+            <div class="ticket-header">
+                <h1>✨ Digital Pass</h1>
+                <div id="event-name" class="event-name">Event Name</div>
+                <div id="event-details" class="event-details" style="display: none;"></div>
+                <a id="map-btn" href="#" style="display: none; color: white; text-decoration: underline; font-size: 12px; margin-top: 8px; display: inline-block;">📍 View Map</a>
+            </div>
+            
+            <div class="ticket-body">
+                <div id="status-badge" class="status-badge status-valid">✅ Valid for Entry</div>
+                <span id="vip-badge" class="vip-badge">🌟 VIP</span>
+                
+                <div id="guest-name" class="guest-name">Guest Name</div>
+                <div id="guest-phone" class="guest-phone">+91 9876543210</div>
+                
+                <div class="divider"></div>
+                
+                <div class="instructions">
+                    <h3>📱 Show Your Pass</h3>
+                    <p>Display the QR code below at the venue entrance for fast check-in.</p>
+                </div>
+                
+                <div id="qr-container" class="qr-container">
+                    <div id="qrcode"></div>
+                </div>
+                
+                <div class="actions">
+                    <button class="btn-primary" onclick="downloadPass()">📥 Save</button>
+                    <button class="btn-secondary" onclick="sharePass()">📤 Share</button>
+                </div>
+            </div>
+            
+            <div class="footer">
+                <p>Don't lose this pass — you'll need it to enter! 🎉</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ⚠️ REPLACE THIS CONFIG WITH YOUR EXACT FIREBASE CONFIG ⚠️
+        const firebaseConfig = {
+            apiKey: "AIzaSyCHB-2Qde78kQmDbRD1KD6L8vdbtXafGfM", 
+            authDomain: "online-voting-system-76856.firebaseapp.com",
+            projectId: "online-voting-system-76856",
+            storageBucket: "online-voting-system-76856.appspot.com",
+            messagingSenderId: "107763524926",
+            appId: "1:107763524926:web:49cd23b80017f2670af86f"
+        };
+        
+        // Initialize Firebase safely
+        try {
+            firebase.initializeApp(firebaseConfig);
+            const db = firebase.firestore();
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const eventId = urlParams.get('event');
+            const guestId = urlParams.get('guest');
+
+            if (!eventId || !guestId || eventId.includes('{')) {
+                document.getElementById('loading').innerHTML = '<h2>❌ Invalid Ticket Link</h2><p>Please request a new link from the host.</p>';
+            } else {
+                // 1. Generate QR Code
+                new QRCode(document.getElementById("qrcode"), {
+                    text: guestId, 
+                    width: 180,
+                    height: 180,
+                    colorDark : "#111827",
+                    colorLight : "#ffffff",
+                    correctLevel : QRCode.CorrectLevel.H
+                });
+
+                // 2. Fetch Event Info
+                db.collection("userEvents").doc(eventId).get().then((doc) => {
+                    if(doc.exists) {
+                        const eventData = doc.data();
+                        document.getElementById("event-name").innerText = eventData.eventName || "Special Event";
+                        
+                        if(eventData.location) {
+                            document.getElementById("event-details").innerText = eventData.location;
+                            const mapBtn = document.getElementById("map-btn");
+                            mapBtn.href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(eventData.location)}`;
+                            mapBtn.style.display = "block";
+                        }
+                    }
+                }).catch(e => console.error("Event fetch error:", e));
+
+                // 3. Real-Time Guest Listener
+                db.collection("userEvents").doc(eventId).collection("guests").doc(guestId)
+                  .onSnapshot((doc) => {
+                      document.getElementById('loading').style.display = 'none';
+                      
+                      if (doc.exists) {
+                          const data = doc.data();
+                          document.getElementById("ticket-wrapper").style.display = "block";
+                          document.getElementById("guest-name").innerText = data.name || "Valued Guest";
+                          document.getElementById("guest-phone").innerText = data.phone || "";
+                          
+                          if(data.isVIP) {
+                              document.getElementById("vip-badge").style.display = "inline-block";
+                          }
+                          
+                          const statusBadge = document.getElementById("status-badge");
+                          const qrContainer = document.getElementById("qr-container");
+                          
+                          if(data.status === 'checked_in') {
+                              statusBadge.className = "status-badge status-used";
+                              statusBadge.innerHTML = "⚠️ Scanned & Entered";
+                              qrContainer.style.opacity = "0.2"; 
+                          } else {
+                              statusBadge.className = "status-badge status-valid";
+                              statusBadge.innerHTML = "✅ Valid for Entry";
+                              qrContainer.style.opacity = "1";
+                          }
+                      } else {
+                          document.getElementById('loading').style.display = 'block';
+                          document.getElementById('loading').innerHTML = '<h2>❌ Ticket Not Found</h2><p>This guest was deleted or does not exist.</p>';
+                      }
+                  }, (error) => {
+                      console.error("Firestore error:", error);
+                      document.getElementById('loading').innerHTML = '<h2>❌ Connection Error</h2><p>' + error.message + '</p>';
+                  });
+            }
+        } catch (e) {
+            console.error("Initialization error:", e);
+            document.getElementById('loading').innerHTML = '<h2>❌ Setup Error</h2><p>Failed to initialize Firebase.</p>';
+        }
+
+        // Download Pass (Screenshot hint)
+        function downloadPass() {
+            alert('📱 Screenshot this page and save it to your phone!\n\nThat way, you\'ll always have your pass ready.');
+        }
+
+        // Share Pass
+        function sharePass() {
+            const url = window.location.href;
+            if (navigator.share) {
+                navigator.share({
+                    title: 'My Event Pass',
+                    text: 'Check out my digital pass! 🎉',
+                    url: url
+                }).catch(err => console.log('Share failed:', err));
+            } else {
+                const msg = 'My Ticket: ' + url;
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(msg);
+                    alert('Link copied! Paste it in WhatsApp.');
+                } else {
+                    alert(msg);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

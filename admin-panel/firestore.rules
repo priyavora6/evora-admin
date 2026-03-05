@@ -3,48 +3,62 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Allow unauthenticated access during admin setup
     match /users/{userId} {
-      allow read, write: if request.auth == null || request.auth.uid == userId || isAdmin(request.auth.uid);
+      allow read, write: if request.auth == null || request.auth.uid == userId || isAdmin();
     }
 
     // Allow authenticated users to read/write to most collections if they are admin
     match /events/{eventId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
     }
 
     match /userEvents/{eventId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
     }
 
     match /vendors/{vendorId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read: if true;
+      allow write: if request.auth == null || request.auth != null && isAdmin();
     }
 
     match /tasks/{taskId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
     }
 
     match /tickets/{ticketId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
     }
 
     match /guests/{guestId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
     }
 
     match /media/{mediaId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
     }
 
     match /sections/{sectionId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
     }
 
     match /budgets/{budgetId} {
-      allow read, write: if request.auth != null && isAdmin(request.auth.uid);
+      allow read, write: if request.auth != null && isAdmin();
+    }
+
+    match /eventRequests/{requestId} {
+      allow create: if true; // Users can submit event booking requests
+      allow read, update: if request.auth != null && isAdmin();
     }
   }
 
-  function isAdmin(uid) {
-    return get(/databases/$(database)/documents/users/$(uid)).data.role == 'admin';
+  function isAdmin() {
+    return isAuthenticated() && (
+      request.auth.token.email == 'admin@evora.com' || 
+      (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+    );
+  }
+
+  function isAuthenticated() {
+    return request.auth != null;
   }
 }

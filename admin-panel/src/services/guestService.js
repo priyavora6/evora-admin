@@ -3,7 +3,7 @@ import { db } from '../firebase/config'
 
 export const getGuests = (eventId, callback) => {
   const q = query(
-    collection(db, 'events', eventId, 'guests'),
+    collection(db, 'userEvents', eventId, 'guests'),
     orderBy('createdAt', 'desc')
   )
   return onSnapshot(q, (snap) => {

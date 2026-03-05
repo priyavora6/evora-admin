@@ -18,6 +18,12 @@ import VendorsPage from './pages/VendorsPage'
 import TaskTemplatesPage from './pages/TaskTemplatesPage'
 import SettingPage from './pages/settings/SettingPage'
 import Rsvp from './pages/Rsvp'
+import EmailOtpMonitor from './components/EmailOtpMonitor'
+import SeedPage from './pages/SeedPage'
+import EventRequestsPage from './pages/EventRequestsPage'
+import Payments from './pages/Payments'
+import TaskMonitor from './pages/TaskMonitor'
+
 
 export default function App() {
   const [ready, setReady] = useState(false)
@@ -61,6 +67,8 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/rsvp" element={<Rsvp />} />
+          <Route path="/seed" element={<SeedPage />} />
+          
           <Route path="/" element={
             <ProtectedRoute>
               <AdminLayout />
@@ -71,6 +79,9 @@ export default function App() {
             <Route path="users/:userId" element={<UserDetailPage />} />
             <Route path="events" element={<EventPage />} />
             <Route path="events/:eventId" element={<EventDetail />} />
+            <Route path="event-requests" element={<EventRequestsPage />} />
+            <Route path="payments" element={<Payments />} />
+            <Route path="task-monitor" element={<TaskMonitor />} />
             <Route path="guests" element={<GuestsPage />} />
             <Route path="event-types" element={<EventTypesPage />} />
             <Route path="sections" element={<SectionsPage />} />
@@ -78,6 +89,7 @@ export default function App() {
             <Route path="vendors" element={<VendorsPage />} />
             <Route path="tasks" element={<TaskTemplatesPage />} />
             <Route path="settings" element={<SettingPage />} />
+            <Route path="admin/otps" element={<EmailOtpMonitor />} />
           </Route>
         </Routes>
       </AuthProvider>

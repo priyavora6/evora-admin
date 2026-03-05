@@ -4,9 +4,9 @@ import EmptyState from '../common/EmptyState'
 export default function GuestList({ guests }) {
   if (guests.length === 0) return <EmptyState emoji="👥" title="No guests" subtitle="No guests added yet" />
 
-  const confirmed = guests.filter(g => g.rsvpStatus === 'confirmed').length
-  const pending = guests.filter(g => g.rsvpStatus === 'pending').length
-  const declined = guests.filter(g => g.rsvpStatus === 'declined').length
+  const checkedIn = guests.filter(g => g.status === 'checked_in').length
+  const pending = guests.filter(g => g.status === 'pending').length
+  const vips = guests.filter(g => g.isVIP === true).length
 
   return (
     <div>
@@ -16,12 +16,12 @@ export default function GuestList({ guests }) {
           <div className="value" style={{ color: 'var(--info)' }}>{guests.length}</div>
         </div>
         <div className="info-card">
-          <div className="label">Confirmed</div>
-          <div className="value" style={{ color: 'var(--success)' }}>{confirmed}</div>
+          <div className="label">Checked In</div>
+          <div className="value" style={{ color: 'var(--success)' }}>{checkedIn}</div>
         </div>
         <div className="info-card">
-          <div className="label">Pending</div>
-          <div className="value" style={{ color: 'var(--warning)' }}>{pending}</div>
+          <div className="label">VIP Guests</div>
+          <div className="value" style={{ color: 'var(--warning)' }}>{vips}</div>
         </div>
       </div>
 
@@ -30,22 +30,36 @@ export default function GuestList({ guests }) {
           <thead>
             <tr>
               <th>Name</th>
-              <th>Phone</th>
-              <th>Email</th>
-              <th>Group</th>
-              <th>RSVP</th>
-              <th>Checked In</th>
+              <th>Contact</th>
+              <th>Source</th>
+              <th>Type</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {guests.map(g => (
               <tr key={g.id}>
                 <td style={{ fontWeight: 600 }}>{g.name}</td>
-                <td>{g.phone || '-'}</td>
-                <td>{g.email || '-'}</td>
-                <td>{g.group || 'General'}</td>
-                <td><StatusBadge status={g.rsvpStatus || 'pending'} /></td>
-                <td>{g.checkedIn ? '✅' : '—'}</td>
+                <td>
+                  <div>{g.phone || '-'}</div>
+                  <div style={{ fontSize: '12px', color: 'gray' }}>{g.email || '-'}</div>
+                </td>
+                <td>
+                  <span className={`badge ${g.source === 'rsvp_link' ? 'bg-blue' : 'bg-gray'}`}>
+                    {g.source === 'rsvp_link' ? 'Online RSVP' : 'Host Added'}
+                  </span>
+                </td>
+                <td>
+                  {g.isVIP ? '🌟 VIP' : 'Regular'}
+                </td>
+                <td>
+                  <span style={{ 
+                    color: g.status === 'checked_in' ? 'green' : 'orange',
+                    fontWeight: 'bold'
+                  }}>
+                    {g.status === 'checked_in' ? '✅ In Venue' : '⏳ Pending'}
+                  </span>
+                </td>
               </tr>
             ))}
           </tbody>

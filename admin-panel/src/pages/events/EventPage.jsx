@@ -1,502 +1,646 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useEvents } from '../../hooks/useEvents';
+import React, { useEffect, useState } from 'react';
 import { db } from '../../firebase/config';
-import { doc, getDoc, updateDoc, collection, getDocs } from 'firebase/firestore'; 
-import { deleteEvent } from '../../services/eventService';
+import { collection, getDocs, doc, query, orderBy, updateDoc, getDoc, onSnapshot } from 'firebase/firestore';
+import { FiEye, FiShoppingBag, FiDollarSign, FiTruck, FiCheckCircle, FiGrid } from 'react-icons/fi';
+import { sendPushNotification } from '../../services/NotificationService';
+import { notifyUser } from '../../utils/notificationService';
 import SearchBar from '../../components/common/SearchBar';
 import FilterChips from '../../components/common/FilterChips';
-import ConfirmModal from '../../components/common/ConfirmModal';
-import Loader from '../../components/common/Loader';
-import { CheckCircle, XCircle, Clock } from 'lucide-react';
-import '../../styles/tables.css';
 
-// Simple Status Badge Component
-const StatusBadge = ({ status }) => {
-  const styles = {
-    confirmed: { bg: '#E8F5E9', color: '#2E7D32', border: '1px solid #C8E6C9' },
-    pending: { bg: '#FFF3E0', color: '#EF6C00', border: '1px solid #FFE0B2' },
-    rejected: { bg: '#FFEBEE', color: '#C62828', border: '1px solid #FFCDD2' },
-    completed: { bg: '#E3F2FD', color: '#1565C0', border: '1px solid #BBDEFB' }
-  };
-  
-  const style = styles[status] || styles.pending;
-
-  return (
-    <span style={{
-      padding: '4px 8px',
-      borderRadius: '12px',
-      fontSize: '12px',
-      fontWeight: 'bold',
-      backgroundColor: style.bg,
-      color: style.color,
-      border: style.border,
-      textTransform: 'uppercase'
-    }}>
-      {status}
-    </span>
-  );
-};
-
-export default function EventsPage() {
-  const { events, loading } = useEvents();
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('all');
-  const [eventTypeFilter, setEventTypeFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('newest');
-  const [confirm, setConfirm] = useState(null);
-  const [userNames, setUserNames] = useState({});
-  const [selectedEvent, setSelectedEvent] = useState(null); // For Modal
-  const [modalLoading, setModalLoading] = useState(false);
-  const nav = useNavigate();
-
-  // Fetch User Names for Events
+export default function EventPage() {
+  const [events, setEvents] = useState([]);
+  const [selectedDetail, setSelectedDetail] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('all');
   useEffect(() => {
-    const loadNames = async () => {
-      const names = {};
-      const uniqueIds = [...new Set(events.map(e => e.userId).filter(Boolean))];
+    // 🔥 LISTENER 1: Payments - Monitor payment changes
+    const paymentsQuery = query(collection(db, "payments"));
+    const unsubscribePayments = onSnapshot(paymentsQuery, async (paymentSnap) => {
+      const allPayments = paymentSnap.docs.map(d => d.data());
       
-      for (const uid of uniqueIds) {
-        if (!names[uid]) {
+      // 🔥 Get all events and update status based on payments
+      const eventsSnap = await getDocs(query(collection(db, "userEvents")));
+
+      eventsSnap.docs.forEach(async (eventDoc) => {
+        const eventData = eventDoc.data();
+        const eventUserId = eventData.userId?.trim();
+        const eventTotal = eventData.totalEstimatedCost || 0;
+
+        if (!eventUserId || eventTotal === 0) return;
+
+        // 🔥 Calculate total paid from ALL successful payments for this user
+        const totalPaid = allPayments
+          .filter(p => {
+            const paymentUserId = p.userId?.trim();
+            const hasSuccessStatus = p.status === 'Success' || p.status === 'approved' || p.status === 'SUCCESS';
+            return paymentUserId === eventUserId && hasSuccessStatus;
+          })
+          .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        const isFullyPaid = totalPaid >= eventTotal;
+        const hasPartialPayment = totalPaid > 0 && totalPaid < eventTotal;
+
+        // 🔥 AUTO-CONFIRM if full payment
+        if (isFullyPaid && eventData.status !== 'confirmed') {
           try {
-            const userDoc = await getDoc(doc(db, "users", uid));
-            if (userDoc.exists()) {
-              names[uid] = userDoc.data().name || 'Unknown';
-            } else {
-              names[uid] = 'Unknown User';
-            }
-          } catch (error) {
-            console.error("Error fetching user:", error);
-            names[uid] = 'Error';
+            await updateDoc(doc(db, "userEvents", eventDoc.id), { 
+              status: "confirmed", 
+              confirmedAt: new Date(),
+              paidAmount: totalPaid
+            });
+            console.log(`✅ Auto-confirmed event ${eventDoc.id}`);
+          } catch (err) {
+            console.error("Error auto-confirming:", err);
           }
         }
-      }
-      setUserNames(names);
+        // 🔥 REVERT if partial payment but currently confirmed
+        else if (hasPartialPayment && eventData.status === 'confirmed') {
+          try {
+            await updateDoc(doc(db, "userEvents", eventDoc.id), { 
+              status: "approved",
+              confirmedAt: null
+            });
+            console.log(`⏳ Reverted event ${eventDoc.id} from confirmed to approved`);
+          } catch (err) {
+            console.error("Error reverting:", err);
+          }
+        }
+      });
+    });
+
+    // 🔥 LISTENER 2: Events - Updates UI immediately when status changes
+    const eventsQuery = query(collection(db, "userEvents"), orderBy("createdAt", "desc"));
+    const unsubscribeEvents = onSnapshot(eventsQuery, async (eventSnap) => {
+      const eventsWithScans = await Promise.all(
+        eventSnap.docs.map(async (eventDoc) => {
+          const scansSnap = await getDocs(collection(db, "userEvents", eventDoc.id, "scans"));
+          return {
+            id: eventDoc.id,
+            scanCount: scansSnap.docs.length,
+            ...eventDoc.data()
+          };
+        })
+      );
+      console.log("📋 Events updated in UI:", eventsWithScans.map(e => ({name: e.eventName, status: e.status})));
+      setEvents(eventsWithScans);
+    });
+
+    return () => {
+      unsubscribePayments();
+      unsubscribeEvents();
     };
+  }, []);
+
+  // 🔥 FETCH FULL FINANCIAL & SERVICE DATA
+  const openDetails = async (event) => {
+    try {
+      // 1. Fetch Selected Items (Services picked by User)
+      const itemsSnap = await getDocs(collection(db, "userEvents", event.id, "selectedItems"));
+      const items = itemsSnap.docs.map(d => d.data());
+
+      // 2. Fetch Budget & Payments data
+      const budgetSnap = await getDocs(collection(db, "userEvents", event.id, "budget"));
+      const budgetData = budgetSnap.docs.length > 0 ? budgetSnap.docs[0].data() : { totalPaid: 0 };
+
+      // 🔥 3. FETCH PAYMENT INFO - Check if user made a successful payment
+      let paymentInfo = { totalPaid: budgetData.totalPaid || 0 };
+      try {
+        const paymentsSnap = await getDocs(collection(db, "payments"));
+        const userPayment = paymentsSnap.docs.find(doc => {
+          const p = doc.data();
+          const isUserPayment = p.userId === event.userId;
+          const isSuccess = p.status === 'Success' || p.status === 'approved' || p.status === 'SUCCESS';
+          return isUserPayment && isSuccess;
+        });
+
+        if (userPayment) {
+          const pData = userPayment.data();
+          paymentInfo = {
+            totalPaid: pData.amount || 0,
+            paymentStatus: pData.status,
+            transactionId: pData.transactionId,
+            paymentMethod: pData.method,
+            timestamp: pData.timestamp
+          };
+        }
+      } catch (err) {
+        console.error("Error fetching payment info:", err);
+      }
+
+      // 4. Fetch Scan data
+      const scansSnap = await getDocs(collection(db, "userEvents", event.id, "scans"));
+      const scanCount = scansSnap.docs.length;
+
+      setSelectedDetail({ ...event, items, budgetData: paymentInfo, scanCount });
+    } catch (err) {
+      console.error("Error fetching full data:", err);
+    }
+  };
+
+  // 🔥 APPROVE EVENT
+  const approveEvent = async (eventId) => {
+    try {
+      // 1. Fetch event data to get userId
+      const eventRef = doc(db, "userEvents", eventId);
+      const eventSnap = await getDoc(eventRef);
+      const eventData = eventSnap.data();
+      const userId = eventData?.userId;
+
+      // 2. Update the Main Event Status to Approved
+      await updateDoc(eventRef, { status: "approved" });
+
+      // 3. Update all "pending" bookings inside this event to "approved"
+      // This triggers the "PAY NOW" button in the Flutter App
+      const bookingsRef = collection(db, "userEvents", eventId, "bookings");
+      const q = query(bookingsRef);
+      const querySnapshot = await getDocs(q);
+
+      const updatePromises = querySnapshot.docs.map((bookingDoc) => {
+        return updateDoc(doc(db, "userEvents", eventId, "bookings", bookingDoc.id), {
+          status: "approved" // ✅ This makes the Pay Now button appear in Flutter
+        });
+      });
+
+      await Promise.all(updatePromises);
+
+      // 4. Fetch User's FCM Token & Send Push Notification
+      if (userId) {
+        try {
+          // 👇 SEND NOTIFICATION (Matches Flutter Logic)
+          await notifyUser(
+            userId,
+            'approved',  // 👈 THIS KEY IS IMPORTANT
+            'Booking Approved! 🎉',
+            `Your request for "${eventData.eventName || 'your event'}" is approved. Open EVORA to complete payment.`
+          );
+
+          // 🚀 Send Live Push Notification via Legacy FCM API
+          await sendPushNotification(
+            userId,
+            "Booking Approved! 🎉",
+            `Your request for "${eventData.eventName || 'your event'}" is approved. Open EVORA to complete payment.`
+          );
+          console.log("✅ Push notification sent to user");
+        } catch (notifErr) {
+          console.error("⚠️ Could not send push notification:", notifErr);
+          // Don't fail the approval if notification fails - it will be sent by Cloud Function
+        }
+      }
+
+      // Update local state
+      setEvents(events.map(e => e.id === eventId ? { ...e, status: "approved" } : e));
+      
+      alert("Event and all services approved successfully! User notified.");
+    } catch (err) {
+      console.error("Error approving event:", err);
+      alert("Failed to approve event");
+    }
+  };
+
+  // Filter and search events
+  const filteredEvents = events.filter(e => {
+    const matchesSearch = 
+      e.eventName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      e.userId.toLowerCase().includes(searchQuery.toLowerCase());
     
-    if (events.length > 0) loadNames();
-  }, [events]);
+    const matchesStatus = selectedStatus === 'all' || e.status === selectedStatus;
+    
+    return matchesSearch && matchesStatus;
+  });
 
-  if (loading) return <Loader />;
-
-  const filters = [
-    { value: 'all', label: 'All' },
-    { value: 'pending', label: 'Pending' },
-    { value: 'confirmed', label: 'Confirmed' },
-    { value: 'rejected', label: 'Rejected' },
+  const statusFilters = [
+    { label: 'All Events', value: 'all' },
+    { label: 'Pending', value: 'pending' },
+    { label: 'Approved', value: 'approved' },
+    { label: 'Confirmed', value: 'confirmed' }
   ];
 
-  // Get unique event types for dropdown
-  const eventTypes = ['all', ...new Set(events.map(e => e.eventTypeName).filter(Boolean))];
-
-  // Filter Logic
-  let filtered = events.filter(e => {
-    const matchSearch = 
-      e.eventName?.toLowerCase().includes(search.toLowerCase()) ||
-      e.eventTypeName?.toLowerCase().includes(search.toLowerCase()) ||
-      e.location?.toLowerCase().includes(search.toLowerCase());
-    
-    const matchStatus = filter === 'all' || e.status === filter;
-    const matchType = eventTypeFilter === 'all' || e.eventTypeName === eventTypeFilter;
-    
-    return matchSearch && matchStatus && matchType;
-  });
-
-  // Sort Logic
-  filtered = [...filtered].sort((a, b) => {
-    switch (sortBy) {
-      case 'newest':
-        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
-      case 'oldest':
-        return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
-      case 'name':
-        return (a.eventName || '').localeCompare(b.eventName || '');
-      case 'budget-high':
-        return (b.totalEstimatedCost || 0) - (a.totalEstimatedCost || 0);
-      case 'budget-low':
-        return (a.totalEstimatedCost || 0) - (b.totalEstimatedCost || 0);
-      case 'guests':
-        return (b.guestCount || 0) - (a.guestCount || 0);
-      default:
-        return 0;
-    }
-  });
-
-  const handleDelete = (event) => {
-    setConfirm({
-      title: 'Delete Event?',
-      message: `Delete "${event.eventName}"? This cannot be undone.`,
-      onConfirm: async () => {
-        await deleteEvent(event.id);
-        setConfirm(null);
-        // Ideally trigger a refresh here or use local state update
-        window.location.reload(); 
-      }
-    });
-  };
-
-  const handleApprove = async (eventId) => {
-    try {
-      const eventRef = doc(db, 'userEvents', eventId);
-      await updateDoc(eventRef, { status: 'confirmed' });
-    } catch (error) {
-      console.error('Error approving event:', error);
-    }
-  };
-
-  // 🔥 FETCH DETAILS (ITEMS + GUESTS)
-  const handleViewDetails = async (event) => {
-    setModalLoading(true);
-    try {
-      // 1. Fetch Selected Items
-      const itemsSnapshot = await getDocs(collection(db, "userEvents", event.id, "selectedItems"));
-      const items = itemsSnapshot.docs.map(doc => doc.data());
-
-      // 2. Fetch Guests
-      const guestsSnapshot = await getDocs(collection(db, "userEvents", event.id, "guests"));
-      const guests = guestsSnapshot.docs.map(doc => doc.data());
-      
-      setSelectedEvent({ ...event, items, guests });
-    } catch (error) {
-      console.error("Error fetching details:", error);
-      alert("Could not load details");
-    } finally {
-      setModalLoading(false);
-    }
-  };
-
-  // Update Status from Modal
-  const handleStatusUpdate = async (eventId, newStatus) => {
-    try {
-      const eventRef = doc(db, "userEvents", eventId);
-      await updateDoc(eventRef, { status: newStatus });
-      
-      // Update local state
-      if (selectedEvent && selectedEvent.id === eventId) {
-        setSelectedEvent(prev => ({ ...prev, status: newStatus }));
-      }
-      
-      alert(`Event marked as ${newStatus}!`);
-      window.location.reload(); // Refresh to show updated status
-    } catch (error) {
-      console.error("Error updating status:", error);
-    }
-  };
-
-  const resetFilters = () => {
-    setSearch('');
-    setFilter('all');
-    setEventTypeFilter('all');
-    setSortBy('newest');
-  };
-
-  const hasActiveFilters = search || filter !== 'all' || eventTypeFilter !== 'all' || sortBy !== 'newest';
-
   return (
-    <div style={{ padding: 24 }}>
-      <div className="page-header">
-        <h1>Events ({events.length})</h1>
-      </div>
+    <div style={{ padding: '20px' }}>
+      <header style={{ marginBottom: '30px' }}>
+        <h1>Manage Bookings</h1>
+        <p style={{ color: 'var(--secondary)', marginTop: '5px' }}>Track services, payments, and budgets for all events.</p>
+      </header>
 
-      <div className="search-filter-bar">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search events..." />
-        <FilterChips filters={filters} active={filter} onChange={setFilter} />
-      </div>
-
-      {/* Advanced Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Event Type:</label>
-          <select 
-            value={eventTypeFilter} 
-            onChange={(e) => setEventTypeFilter(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer' }}
-          >
-            <option value="all">All Types</option>
-            {eventTypes.filter(t => t !== 'all').map(type => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
+      {/* Search and Filter Section */}
+      <div className="card" style={{ marginBottom: '20px', padding: '20px' }}>
+        <div style={{ marginBottom: '16px' }}>
+          <SearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search by event name or user ID..."
+          />
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Sort By:</label>
-          <select 
-            value={sortBy} 
-            onChange={(e) => setSortBy(e.target.value)}
-            style={{ padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', cursor: 'pointer' }}
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="name">Name (A-Z)</option>
-            <option value="budget-high">Cost (High to Low)</option>
-            <option value="budget-low">Cost (Low to High)</option>
-            <option value="guests">Most Guests</option>
-          </select>
-        </div>
-
-        <div style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--text-light)', fontWeight: 500 }}>
-          Showing {filtered.length} of {events.length} events
-          {hasActiveFilters && (
-            <button onClick={resetFilters} style={{ marginLeft: 10, padding: '6px 12px', border: '1px solid var(--border)', background: 'white', cursor: 'pointer' }}>
-              Reset Filters
-            </button>
-          )}
-        </div>
-      </div>
-
-      {filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-light)' }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>🔍</div>
-          <h3>No events found</h3>
-          <p>{hasActiveFilters ? 'Try adjusting your filters' : 'No events have been created yet'}</p>
-          {hasActiveFilters && (
-            <button onClick={resetFilters} style={{ marginTop: 16, padding: '10px 20px', background: 'var(--primary)', color: 'white', border: 'none', borderRadius: 8 }}>
-              Clear All Filters
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="data-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Event</th>
-                <th>Created By</th>
-                <th>Type</th>
-                <th>Date</th>
-                <th>Guests</th>
-                <th>Total Cost</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(event => {
-                const date = event.eventDate?.toDate ? event.eventDate.toDate() : new Date();
-                
-                return (
-                  <tr key={event.id}>
-                    <td>
-                      <span style={{ fontWeight: 600, color: 'var(--primary)', cursor: 'pointer' }} onClick={() => nav(`/events/${event.id}`)}>
-                        {event.eventName}
-                      </span>
-                    </td>
-                    <td>
-                      <span style={{ color: 'var(--text-light)' }}>
-                        {userNames[event.userId] || 'Loading...'}
-                      </span>
-                    </td>
-                    <td>{event.eventTypeName}</td>
-                    <td style={{ fontSize: 12 }}>{date.toLocaleDateString()}</td>
-                    <td>{event.guestCount || 0}</td>
-                    <td>₹{(event.totalEstimatedCost || 0).toLocaleString()}</td>
-                    <td><StatusBadge status={event.status} /></td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="action-btn view" onClick={() => handleViewDetails(event)}>Details</button>
-                        {event.status === 'pending' && (
-                          <button className="action-btn success" onClick={() => handleApprove(event.id)}>Approve</button>
-                        )}
-                        <button className="action-btn danger" onClick={() => handleDelete(event)}>Delete</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {confirm && (
-        <ConfirmModal
-          title={confirm.title}
-          message={confirm.message}
-          onConfirm={confirm.onConfirm}
-          onCancel={() => setConfirm(null)}
+        <FilterChips
+          filters={statusFilters}
+          active={selectedStatus}
+          onChange={setSelectedStatus}
         />
-      )}
+      </div>
 
-      {/* GUEST DETAILS MODAL */}
-      {selectedEvent && (
-        <div style={modalOverlayStyle}>
-          <div style={modalStyle}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, color: '#1B2F5E' }}>{selectedEvent.eventName}</h2>
-              <button onClick={() => setSelectedEvent(null)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>×</button>
-            </div>
+      {/* Results count */}
+      <div style={{ marginBottom: '16px', fontSize: '14px', color: 'var(--secondary)' }}>
+        Found <strong>{filteredEvents.length}</strong> event{filteredEvents.length !== 1 ? 's' : ''}
+      </div>
 
-            {/* Event Info Summary */}
-            <div style={{ marginBottom: '20px', padding: '15px', background: '#F9F6F3', borderRadius: '8px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '14px' }}>
-                <div><strong>Type:</strong> {selectedEvent.eventTypeName}</div>
-                <div><strong>Date:</strong> {selectedEvent.eventDate?.toDate ? selectedEvent.eventDate.toDate().toLocaleDateString() : 'N/A'}</div>
-                <div><strong>Guest Count:</strong> {selectedEvent.guestCount}</div>
-                <div><strong>Cost:</strong> ₹{selectedEvent.totalEstimatedCost?.toLocaleString()}</div>
-              </div>
-            </div>
-
-            {/* TABS (Simple Toggle) */}
-            <div style={{ marginBottom: '20px', borderBottom: '1px solid #eee' }}>
-              <h3 style={{ color: '#C59D89', borderBottom: '2px solid #C59D89', display: 'inline-block', paddingBottom: '5px' }}>Guest List</h3>
-            </div>
-
-            {modalLoading ? (
-              <div style={{ padding: '20px', textAlign: 'center' }}>Loading guest details...</div>
+      <div className="card">
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid var(--border-color)' }}>
+              <th style={{ textAlign: 'left', padding: '12px', fontWeight: '600' }}>Event Name</th>
+              <th style={{ textAlign: 'left', padding: '12px', fontWeight: '600' }}>User</th>
+              <th style={{ textAlign: 'left', padding: '12px', fontWeight: '600' }}>Guests</th>
+              <th style={{ textAlign: 'left', padding: '12px', fontWeight: '600' }}>Scans</th>
+              <th style={{ textAlign: 'left', padding: '12px', fontWeight: '600' }}>Total Cost</th>
+              <th style={{ textAlign: 'left', padding: '12px', fontWeight: '600' }}>Status</th>
+              <th style={{ textAlign: 'left', padding: '12px', fontWeight: '600' }}>Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredEvents.length === 0 ? (
+              <tr>
+                <td colSpan="7" style={{ padding: '30px', textAlign: 'center', color: 'var(--secondary)' }}>
+                  No events found matching your search criteria.
+                </td>
+              </tr>
             ) : (
-              <>
-                {/* GUEST STATS */}
-                <div style={{ display: 'flex', gap: '15px', marginBottom: '20px' }}>
-                  <GuestStat 
-                    icon={<CheckCircle size={16} />} 
-                    label="Confirmed" 
-                    count={selectedEvent.guests?.filter(g => g.rsvpStatus === 'confirmed').length || 0} 
-                    color="green" 
-                  />
-                  <GuestStat 
-                    icon={<Clock size={16} />} 
-                    label="Pending" 
-                    count={selectedEvent.guests?.filter(g => g.rsvpStatus === 'pending').length || 0} 
-                    color="orange" 
-                  />
-                  <GuestStat 
-                    icon={<XCircle size={16} />} 
-                    label="Declined" 
-                    count={selectedEvent.guests?.filter(g => g.rsvpStatus === 'declined').length || 0} 
-                    color="red" 
-                  />
-                </div>
-
-                {/* GUEST TABLE */}
-                <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
-                  {selectedEvent.guests && selectedEvent.guests.length > 0 ? (
-                    <table style={{ width: '100%', fontSize: '14px', borderCollapse: 'collapse' }}>
-                      <thead style={{ position: 'sticky', top: 0, background: '#F9F6F3' }}>
-                        <tr>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Name</th>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Phone</th>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Side</th>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Relation</th>
-                          <th style={{ padding: '10px', textAlign: 'left' }}>Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedEvent.guests.map((guest, index) => (
-                          <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
-                            <td style={{ padding: '10px' }}>{guest.name || 'N/A'}</td>
-                            <td style={{ padding: '10px' }}>{guest.phone || 'N/A'}</td>
-                            <td style={{ padding: '10px' }}>{guest.side || 'N/A'}</td>
-                            <td style={{ padding: '10px' }}>{guest.relation || 'N/A'}</td>
-                            <td style={{ padding: '10px' }}>
-                              <span style={{
-                                padding: '4px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold',
-                                backgroundColor: getStatusColor(guest.rsvpStatus || 'pending').bg,
-                                color: getStatusColor(guest.rsvpStatus || 'pending').text
-                              }}>
-                                {(guest.rsvpStatus || 'pending').toUpperCase()}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#7D726E' }}>No guests added yet.</div>
-                  )}
-                </div>
-
-                {/* LIVE GUEST COUNTER */}
-                <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '10px', marginTop: '20px' }}>
-                  Live Entry Status
-                </h3>
-                
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'space-between', 
-                  background: '#F9F6F3', 
-                  padding: '20px', 
-                  borderRadius: '12px',
-                  marginTop: '15px'
-                }}>
-                  <div>
-                    <p style={{ margin: 0, color: '#7D726E', fontSize: '14px' }}>Guests Checked In</p>
-                    <h1 style={{ margin: '5px 0 0 0', color: '#1B2F5E', fontSize: '36px' }}>
-                      {selectedEvent.checkedInCount || 0}
-                      <span style={{ fontSize: '18px', color: '#7D726E', fontWeight: 'normal' }}> / {selectedEvent.guestCount || 0}</span>
-                    </h1>
+              filteredEvents.map(e => (
+              <tr key={e.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <td style={{ padding: '12px' }}><strong>{e.eventName}</strong></td>
+                <td style={{ padding: '12px' }}>{e.userId.substring(0, 8)}...</td>
+                <td style={{ padding: '12px' }}>
+                  <span style={{
+                    padding: '4px 8px',
+                    borderRadius: '8px',
+                    background: 'rgba(233, 69, 96, 0.1)',
+                    color: '#E94560',
+                    fontWeight: '600'
+                  }}>
+                    👥 {e.guestCount || 0}
+                  </span>
+                </td>
+                <td style={{ padding: '12px' }}>
+                  <span style={{
+                    padding: '4px 8px',
+                    borderRadius: '8px',
+                    background: 'rgba(46, 125, 50, 0.1)',
+                    color: '#2E7D32',
+                    fontWeight: '600'
+                  }}>
+                    📱 {e.scanCount || 0}
+                  </span>
+                </td>
+                <td style={{ padding: '12px' }}>₹{e.totalEstimatedCost?.toLocaleString()}</td>
+                <td style={{ padding: '12px' }}>
+                  <span style={{
+                    padding: '4px 8px',
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    backgroundColor: e.status === 'confirmed' ? '#E8F5E9' : e.status === 'approved' ? '#E8F5E9' : '#FFF3E0',
+                    color: e.status === 'confirmed' ? '#2E7D32' : e.status === 'approved' ? '#2E7D32' : '#EF6C00',
+                    textTransform: 'uppercase'
+                  }}>
+                    {e.status}
+                  </span>
+                </td>
+                <td style={{ padding: '12px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {e.status === 'pending' && (
+                      <button 
+                        className="btn-premium"
+                        onClick={() => approveEvent(e.id)}
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '5px', 
+                          fontSize: '14px',
+                          background: 'linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%)',
+                          padding: '8px 16px'
+                        }}
+                      >
+                        ✅ Approve
+                      </button>
+                    )}
+                    <button 
+                      className="btn-premium" 
+                      onClick={() => openDetails(e)}
+                      style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '14px' }}
+                    >
+                      <FiEye /> View Details
+                    </button>
                   </div>
+                </td>
+              </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
-                  {/* Progress Circle (CSS only) */}
-                  <div style={{ position: 'relative', width: '80px', height: '80px' }}>
-                    <svg viewBox="0 0 36 36" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-                      <path
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                        fill="none"
-                        stroke="#eee"
-                        strokeWidth="4"
-                      />
-                      <path
-                        d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                        fill="none"
-                        stroke="#4CAF50"
-                        strokeWidth="4"
-                        strokeDasharray={`${(selectedEvent.guestCount || 0) ? ((selectedEvent.checkedInCount || 0) / (selectedEvent.guestCount || 0)) * 100 : 0}, 100`}
-                      />
-                    </svg>
-                    <div style={{ position: 'absolute', top: '0', left: '0', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 'bold', color: '#4CAF50' }}>
-                      {(selectedEvent.guestCount || 0) ? Math.round(((selectedEvent.checkedInCount || 0) / (selectedEvent.guestCount || 0)) * 100) : 0}%
+      {/* 🔍 THE MASTER DATA MODAL */}
+      {selectedDetail && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          bottom: 0, 
+          background: 'rgba(0,0,0,0.6)', 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          zIndex: 1000,
+          backdropFilter: 'blur(4px)',
+          animation: 'fadeIn 0.2s ease'
+        }}>
+          <div className="card" style={{ 
+            width: '90%', 
+            maxWidth: '900px', 
+            padding: '0', 
+            maxHeight: '85vh', 
+            overflowY: 'auto',
+            borderRadius: '16px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+            animation: 'slideUp 0.3s ease'
+          }}>
+            {/* Modal Header */}
+            <div style={{ 
+              padding: '30px', 
+              borderBottom: '1px solid var(--border-color)',
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              background: 'linear-gradient(135deg, rgba(233, 69, 96, 0.05) 0%, rgba(197, 157, 137, 0.05) 100%)',
+              position: 'sticky',
+              top: 0,
+              zIndex: 10
+            }}>
+              <div>
+                <h2 style={{ margin: '0 0 5px 0', fontSize: '24px', fontWeight: '700' }}>
+                  {selectedDetail.eventName}
+                </h2>
+                <p style={{ margin: 0, color: 'var(--secondary)', fontSize: '13px' }}>
+                  Booking Details & Financial Summary
+                </p>
+              </div>
+              <button 
+                onClick={() => setSelectedDetail(null)}
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  fontSize: '32px', 
+                  cursor: 'pointer',
+                  color: 'var(--secondary)',
+                  padding: '0',
+                  width: '40px',
+                  height: '40px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '50%',
+                  transition: 'all 0.2s ease',
+                  hover: { background: 'rgba(0,0,0,0.05)' }
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div style={{ padding: '30px' }}>
+              {/* 🔐 QR CODE SECTION */}
+              <div style={{ 
+                padding: '20px', 
+                background: 'linear-gradient(135deg, rgba(233, 69, 96, 0.05) 0%, rgba(46, 125, 50, 0.05) 100%)',
+                borderRadius: '12px',
+                marginBottom: '24px',
+                display: 'flex',
+                gap: '20px',
+                alignItems: 'center',
+                flexWrap: 'wrap'
+              }}>
+                <div>
+                  <h4 style={{ margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FiGrid size={18} /> Event QR Code
+                  </h4>
+                  <p style={{ margin: '0', color: 'var(--secondary)', fontSize: '13px' }}>
+                    Share this QR code with guests for check-in
+                  </p>
+                </div>
+                <div style={{
+                  padding: '12px',
+                  background: 'white',
+                  borderRadius: '8px',
+                  border: '2px solid var(--border-color)'
+                }}>
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=120&data=${encodeURIComponent(selectedDetail.id)}`}
+                    alt="QR Code"
+                    style={{ width: '120px', height: '120px' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(46, 125, 50, 0.1)',
+                    borderRadius: '8px',
+                    borderLeft: '3px solid #2E7D32',
+                    minWidth: '150px'
+                  }}>
+                    <div style={{ fontSize: '12px', color: 'var(--secondary)', marginBottom: '4px' }}>Total Scans</div>
+                    <div style={{ fontSize: '28px', fontWeight: '700', color: '#2E7D32' }}>
+                      {selectedDetail.scanCount || 0}
+                    </div>
+                  </div>
+                  <div style={{
+                    padding: '12px 16px',
+                    background: 'rgba(233, 69, 96, 0.1)',
+                    borderRadius: '8px',
+                    borderLeft: '3px solid #E94560',
+                    minWidth: '150px'
+                  }}>
+                    <div style={{ fontSize: '12px', color: 'var(--secondary)', marginBottom: '4px' }}>Check-in Rate</div>
+                    <div style={{ fontSize: '28px', fontWeight: '700', color: '#E94560' }}>
+                      {selectedDetail.guestCount ? Math.round((selectedDetail.scanCount || 0) / selectedDetail.guestCount * 100) : 0}%
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* APPROVE / REJECT BUTTONS */}
-                {selectedEvent.status === 'pending' && (
-                  <div style={{ marginTop: '20px', display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                    <button onClick={() => handleStatusUpdate(selectedEvent.id, 'rejected')} style={rejectBtnStyle}>Reject Event</button>
-                    <button onClick={() => handleStatusUpdate(selectedEvent.id, 'confirmed')} style={approveBtnStyle}>Approve Event</button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px' }}>
+                {/* 🛒 SERVICES PICKED */}
+                <div style={{ 
+                  padding: '24px', 
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: '12px',
+                  background: 'var(--bg-light)',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <h4 style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px', 
+                    marginBottom: '20px',
+                    margin: '0 0 20px 0',
+                    fontSize: '16px',
+                    fontWeight: '700'
+                  }}>
+                    <FiShoppingBag size={18} style={{ color: '#E94560' }} /> 
+                    Selected Services
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {selectedDetail.items && selectedDetail.items.length > 0 ? (
+                      <>
+                        {selectedDetail.items.map((item, i) => (
+                          <div key={i} style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            padding: '12px',
+                            background: 'white',
+                            borderRadius: '8px',
+                            borderLeft: '3px solid #E94560'
+                          }}>
+                            <div>
+                              <div style={{ fontWeight: '600', fontSize: '14px' }}>{item.itemName}</div>
+                              <div style={{ fontSize: '12px', color: 'var(--secondary)', marginTop: '2px' }}>
+                                {item.sectionName}
+                              </div>
+                            </div>
+                            <span style={{ fontWeight: '700', fontSize: '14px' }}>₹{item.price?.toLocaleString()}</span>
+                          </div>
+                        ))}
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          padding: '14px 12px',
+                          background: '#F5F5F5',
+                          borderRadius: '8px',
+                          marginTop: '8px',
+                          fontWeight: '700'
+                        }}>
+                          <span>Total Services</span>
+                          <span style={{ color: '#E94560' }}>₹{selectedDetail.totalEstimatedCost?.toLocaleString()}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div style={{ textAlign: 'center', color: 'var(--secondary)', padding: '20px' }}>
+                        No services selected
+                      </div>
+                    )}
                   </div>
-                )}
-              </>
-            )}
+                </div>
+
+                {/* 💰 BUDGET & PAYMENTS */}
+                <div style={{ 
+                  padding: '24px', 
+                  border: '1px solid var(--border-color)', 
+                  borderRadius: '12px',
+                  background: 'var(--bg-light)',
+                  transition: 'all 0.2s ease'
+                }}>
+                  <h4 style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '10px', 
+                    margin: '0 0 20px 0',
+                    fontSize: '16px',
+                    fontWeight: '700'
+                  }}>
+                    <FiDollarSign size={18} style={{ color: '#2E7D32' }} /> 
+                    Budget & Payments
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      padding: '12px',
+                      background: 'white',
+                      borderRadius: '8px'
+                    }}>
+                      <span style={{ color: 'var(--secondary)' }}>Estimated Total</span>
+                      <span style={{ fontWeight: '700' }}>₹{selectedDetail.totalEstimatedCost?.toLocaleString()}</span>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      padding: '12px',
+                      background: 'white',
+                      borderRadius: '8px',
+                      borderLeft: '3px solid #2E7D32'
+                    }}>
+                      <span style={{ color: 'var(--secondary)' }}>Total Paid</span>
+                      <span style={{ fontWeight: '700', color: '#2E7D32' }}>₹{(selectedDetail.budgetData?.totalPaid || 0).toLocaleString()}</span>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      padding: '14px 12px',
+                      background: selectedDetail.totalEstimatedCost - (selectedDetail.budgetData?.totalPaid || 0) === 0 ? 'rgba(46, 125, 50, 0.1)' : 'rgba(198, 40, 40, 0.1)',
+                      borderRadius: '8px',
+                      borderLeft: `3px solid ${selectedDetail.totalEstimatedCost - (selectedDetail.budgetData?.totalPaid || 0) === 0 ? '#2E7D32' : '#C62828'}`,
+                      fontWeight: '700'
+                    }}>
+                      <span>Remaining Balance</span>
+                      <span style={{ color: selectedDetail.totalEstimatedCost - (selectedDetail.budgetData?.totalPaid || 0) === 0 ? '#2E7D32' : '#C62828' }}>
+                        ₹{(selectedDetail.totalEstimatedCost - (selectedDetail.budgetData?.totalPaid || 0)).toLocaleString()}
+                      </span>
+                    </div>
+
+                    {/* 🔥 SHOW PAYMENT DETAILS IF PAYMENT EXISTS */}
+                    {selectedDetail.budgetData?.paymentStatus && (
+                      <>
+                        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '12px', marginTop: '12px' }}>
+                          <h5 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: '700', color: 'var(--secondary)' }}>
+                            💳 Payment Details
+                          </h5>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                              <span>Status:</span>
+                              <strong style={{ color: '#2E7D32' }}>{selectedDetail.budgetData.paymentStatus}</strong>
+                            </div>
+                            {selectedDetail.budgetData?.transactionId && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                <span>Transaction ID:</span>
+                                <strong style={{ fontFamily: 'monospace', fontSize: '11px' }}>{selectedDetail.budgetData.transactionId}</strong>
+                              </div>
+                            )}
+                            {selectedDetail.budgetData?.paymentMethod && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                <span>Method:</span>
+                                <strong>{selectedDetail.budgetData.paymentMethod}</strong>
+                              </div>
+                            )}
+                            {selectedDetail.budgetData?.timestamp && (
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
+                                <span>Paid Date:</span>
+                                <strong>{new Date(selectedDetail.budgetData.timestamp.seconds * 1000).toLocaleDateString()}</strong>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div style={{
+                    marginTop: '24px',
+                    padding: '12px',
+                    background: selectedDetail.totalEstimatedCost - (selectedDetail.budgetData?.totalPaid || 0) === 0 && (selectedDetail.status === 'confirmed' || selectedDetail.status === 'approved') ? 'rgba(46, 125, 50, 0.08)' : 'rgba(239, 108, 0, 0.08)',
+                    borderLeft: `3px solid ${selectedDetail.totalEstimatedCost - (selectedDetail.budgetData?.totalPaid || 0) === 0 && (selectedDetail.status === 'confirmed' || selectedDetail.status === 'approved') ? '#2E7D32' : '#EF6C00'}`,
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    color: selectedDetail.totalEstimatedCost - (selectedDetail.budgetData?.totalPaid || 0) === 0 && (selectedDetail.status === 'confirmed' || selectedDetail.status === 'approved') ? '#2E7D32' : '#EF6C00'
+                  }}>
+                    {selectedDetail.totalEstimatedCost - (selectedDetail.budgetData?.totalPaid || 0) === 0 && (selectedDetail.status === 'confirmed' || selectedDetail.status === 'approved') ? '✅ Fully Verified & Confirmed' : '⏳ Partially Paid - Awaiting Full Payment'}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-// Helper Components & Styles
-const GuestStat = ({ icon, label, count, color }) => (
-  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '14px', color }}>
-    {icon} <strong>{count}</strong> {label}
-  </div>
-);
-
-const getStatusColor = (status) => {
-  switch (status) {
-    case 'confirmed': return { bg: '#E8F5E9', text: '#2E7D32' };
-    case 'pending': return { bg: '#FFF3E0', text: '#EF6C00' };
-    case 'declined': return { bg: '#FFEBEE', text: '#C62828' };
-    default: return { bg: '#F5F5F5', text: '#616161' };
-  }
-};
-
-const modalOverlayStyle = {
-  position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-  backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000,
-};
-
-const modalStyle = {
-  backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '700px', maxWidth: '90%', maxHeight: '90vh', overflowY: 'auto',
-  boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-};
-
-const approveBtnStyle = {
-  padding: '10px 20px', borderRadius: '8px', border: 'none', backgroundColor: '#4CAF50', color: 'white', fontWeight: 'bold', cursor: 'pointer'
-};
-
-const rejectBtnStyle = {
-  padding: '10px 20px', borderRadius: '8px', border: '1px solid #D9534F', backgroundColor: 'white', color: '#D9534F', fontWeight: 'bold', cursor: 'pointer'
-};

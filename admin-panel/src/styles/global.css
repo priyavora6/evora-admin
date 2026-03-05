@@ -11,6 +11,7 @@
   
   /* 🤍 Backgrounds */
   --bg: #F9F6F3;                /* Soft Warm Cream */
+  --bg-light: #F9F6F3;          /* Light Background */
   --surface: #FFFFFF;           /* Card White */
   --surface-grey: #F2EBE5;      /* Light Rose Tint */
   
@@ -28,6 +29,7 @@
   
   /* 🖼️ UI Component Colors */
   --border: #E6DCD6;            /* Rose-tinted Border */
+  --border-color: #E6DCD6;      /* Border Color */
   --divider: #F2EBE5;
   --disabled: #E0E0E0;
   --shadow: rgba(27, 47, 94, 0.08);  /* Navy Shadow */
@@ -41,4 +43,36 @@
   --gradient-navy: linear-gradient(135deg, #1B2F5E 0%, #0F1E3D 100%);
   --gradient-rose: linear-gradient(135deg, #C59D89 0%, #E3C9BC 100%);
   --gradient-royal: linear-gradient(135deg, #1B2F5E 0%, #5B3E31 100%);
+}
+
+/* 🎬 Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

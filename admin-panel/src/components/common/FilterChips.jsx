@@ -1,6 +1,6 @@
 export default function FilterChips({ filters, active, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
       {filters.map(f => (
         <button
           key={f.value}

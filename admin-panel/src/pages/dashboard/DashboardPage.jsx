@@ -32,17 +32,34 @@ export default function DashboardPage() {
         });
 
         // 3. Calculate Stats
-        const totalRevenue = allEvents
-          .filter(e => e.status === 'confirmed')
-          .reduce((sum, e) => sum + (e.totalEstimatedCost || 0), 0);
+        let totalRev = 0;
+        let pendingCount = 0;
 
-        const pendingCount = allEvents.filter(e => e.status === 'pending').length;
+        allEvents.forEach((event) => {
+          // 💰 REVENUE CALCULATION LOGIC
+          // Count revenue for APPROVED or PAID events
+          if (event.status === "approved" || event.status === "paid") {
+            // Ensure amount is treated as a number (stripping symbols like ₹ or ,)
+            let amount = event.totalEstimatedCost || event.amount || 0;
+            
+            if (typeof amount === 'string') {
+              amount = parseFloat(amount.replace(/[^0-9.]/g, '')); 
+            }
+            
+            totalRev += amount;
+          }
+
+          // ⏳ PENDING LOGIC
+          if (event.status === "pending") {
+            pendingCount++;
+          }
+        });
 
         setStats({
           users: usersSnap.size,
           events: allEvents.length,
           pending: pendingCount,
-          revenue: totalRevenue
+          revenue: totalRev
         });
 
         // 4. Set Recent Events (Top 5)
@@ -97,7 +114,7 @@ export default function DashboardPage() {
         />
         <StatCard 
           title="Total Revenue" 
-          value={`₹${(stats.revenue / 1000).toFixed(1)}K`} 
+          value={`₹${stats.revenue.toLocaleString('en-IN')}`} 
           icon={<DollarSign size={24} color="#2E7D32" />} 
           color="#E8F5E9" 
           textColor="#2E7D32"
@@ -138,7 +155,7 @@ export default function DashboardPage() {
                     {event.eventDate?.toDate ? event.eventDate.toDate().toLocaleDateString() : 'N/A'}
                   </td>
                   <td style={{ padding: '15px', fontWeight: 'bold' }}>
-                    ₹{(event.totalEstimatedCost || 0).toLocaleString()}
+                    ₹{(event.totalEstimatedCost || 0).toLocaleString('en-IN')}
                   </td>
                   <td style={{ padding: '15px' }}>
                     <span style={{

@@ -44,16 +44,21 @@
 }
 
 .filter-chip {
-  padding: 10px 20px;
-  border-radius: 12px;
+  padding: 8px 16px;
+  border-radius: 8px;
   border: 2px solid rgba(197, 157, 137, 0.3);
   background: rgba(197, 157, 137, 0.08);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--secondary-dark);
   transition: all 0.3s ease;
   cursor: pointer;
   letter-spacing: 0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  flex: 1;
+  max-width: calc(25% - 6px);
+  text-align: center;
 }
 
 .filter-chip:hover {
@@ -147,6 +152,12 @@
   border-color: #FFE0B2;
 }
 
+.status-badge.approved { 
+  background: #E8F5E9; 
+  color: var(--success); 
+  border-color: #C8E6C9;
+}
+
 .status-badge.confirmed { 
   background: #E8F5E9; 
   color: var(--success); 
@@ -173,6 +184,18 @@
 
 /* Status Badges - Event Booking Variants */
 .status-confirmed {
+  background-color: #E8F5E9;
+  color: #2E7D32;
+  border: 1px solid #C8E6C9;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+.status-approved {
   background-color: #E8F5E9;
   color: #2E7D32;
   border: 1px solid #C8E6C9;
@@ -311,4 +334,24 @@
   font-weight: 700;
   font-size: 14px;
   color: white;
+}
+
+/* Badge styles for guest source */
+.badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge.bg-blue {
+  background: #E3F2FD;
+  color: #1976D2;
+}
+
+.badge.bg-gray {
+  background: #F5F5F5;
+  color: #757575;
 }

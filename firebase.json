@@ -1,0 +1,25 @@
+{
+  "hosting": {
+    "public": "admin-panel/dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/rsvp.html",
+        "destination": "/rsvp.html"
+      },
+      {
+        "source": "/ticket.html",
+        "destination": "/ticket.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
+

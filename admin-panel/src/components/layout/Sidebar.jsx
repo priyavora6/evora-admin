@@ -2,12 +2,11 @@ import { NavLink } from 'react-router-dom'
 import { 
   FiHome, 
   FiUsers, 
-  FiCalendar, 
+  FiCalendar,
+  FiDollarSign,
+  FiCheckSquare,
   FiSettings, 
-  FiShoppingCart, 
-  FiLayers, 
-  FiPackage,
-  FiGrid 
+  FiShoppingCart
 } from 'react-icons/fi'
 import '../../styles/sidebar.css'
 
@@ -16,12 +15,8 @@ export default function Sidebar() {
     { to: '/', icon: <FiHome />, label: 'Dashboard' },
     { to: '/users', icon: <FiUsers />, label: 'Users' },
     { to: '/events', icon: <FiCalendar />, label: 'Bookings' },
-    
-    // 🔥 NEW MANAGEMENT SECTIONS 🔥
-    { to: '/event-types', icon: <FiGrid />, label: 'Event Types' }, // Marriage, Birthday
-    { to: '/sections', icon: <FiLayers />, label: 'Sections' },    // Vidhi, Decor, Food
-    { to: '/packages', icon: <FiPackage />, label: 'Packages' },  // Basic/Royal Packages
-    
+    { to: '/payments', icon: <FiDollarSign />, label: 'Transactions' },
+    { to: '/task-monitor', icon: <FiCheckSquare />, label: 'Task Monitor' },
     { to: '/vendors', icon: <FiShoppingCart />, label: 'Vendors' },
     { to: '/settings', icon: <FiSettings />, label: 'Settings' },
   ]
